@@ -64,4 +64,4 @@ The smallest config I found that still reproduces the bug is:
 - `backend` is a built service, not a pure `image:` service
 - `frontend` depends on `backend`
 - `frontend` has a `develop.watch` rebuild rule for `frontend/trigger.txt`
-- `backend` has any `develop.watch` rebuild rule at all; in this repro it watches `backend/Dockerfile`
+- `backend` has any `develop.watch` rule at all; in this repro it uses `action: restart` on `backend/Dockerfile`

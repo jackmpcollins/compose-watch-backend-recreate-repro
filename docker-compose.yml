@@ -3,7 +3,7 @@ services:
     build: ./backend
     develop:
       watch:
-        - action: rebuild
+        - action: restart
           path: ./backend/Dockerfile
 
   frontend:
