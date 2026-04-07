@@ -1,77 +1,137 @@
 # Compose Watch Backend Recreate Repro
 
-This is a minimal reproduction for a Docker Compose watch reconcile issue:
+This repo is a minimal reproduction for a Docker Compose watch bug where rebuilding `frontend` also recreates `backend`, and `backend` can then be left stuck in `Created`.
 
-- `backend` is a one-line build wrapper around the off-the-shelf `hashicorp/http-echo` image
-- `frontend` is a tiny `caddy` reverse proxy to `http://backend:8000`
+## What This Repo Contains
+
+The setup is intentionally small:
+
+- `backend` is a built service based on `hashicorp/http-echo`
+- `frontend` is a `caddy` reverse proxy to `backend:8000`
 - `frontend` depends on `backend`
-- both `frontend` and `backend` have `develop.watch` config
-- touching `frontend/trigger.txt` is enough to trigger the issue
-- on Docker 29.3.1 / Compose v5.1.1, the original repo only reproduced reliably after adding a `backend.develop.watch` entry
-- the bug reproduces both with `docker compose watch frontend` and with `docker compose up --build --watch`
+- both services have `develop.watch` configured
+- touching `frontend/trigger.txt` triggers a `frontend` rebuild
 
-## Run
+The checked-in compose file is:
+
+```yaml
+services:
+  backend:
+    build: ./backend
+    develop:
+      watch:
+        - action: restart
+          path: ./backend/Dockerfile
+
+  frontend:
+    depends_on:
+      - backend
+    build: ./frontend
+    ports:
+      - "3002:3000"
+    develop:
+      watch:
+        - action: rebuild
+          path: ./frontend/trigger.txt
+```
+
+Supporting files:
+
+- `backend/Dockerfile`
+
+```Dockerfile
+FROM hashicorp/http-echo:1.0.0
+
+CMD ["-text=backend ok", "-listen=:8000"]
+```
+
+- `frontend/Dockerfile`
+
+```Dockerfile
+FROM caddy:2.10.2-alpine
+
+COPY Caddyfile /etc/caddy/Caddyfile
+```
+
+- `frontend/Caddyfile`
+
+```text
+:3000 {
+    reverse_proxy backend:8000
+}
+```
+
+- `frontend/trigger.txt`
+
+```text
+touch me to trigger a frontend rebuild
+```
+
+## Repro
+
+You can reproduce it either by starting `watch` separately:
 
 ```bash
-cd compose-watch-backend-recreate-repro
 docker compose down
 docker compose up -d --build
 docker compose watch frontend
 ```
 
-Or, equivalently:
+Or by using `up --watch`:
 
 ```bash
-cd compose-watch-backend-recreate-repro
 docker compose down
 docker compose up --build --watch
 ```
 
-In another shell:
+In another shell, trigger the `frontend` rebuild and inspect the resulting state:
 
 ```bash
-cd compose-watch-backend-recreate-repro
-while true; do
-  printf '%s ' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
-  curl -s -o /dev/null -w 'status=%{http_code} total=%{time_total}\n' \
-    http://localhost:3002/ || echo curl_failed
-  sleep 0.2
-done
-```
-
-Trigger the rebuild:
-
-```bash
-cd compose-watch-backend-recreate-repro
 touch frontend/trigger.txt
+docker compose ps
+docker compose ps -a
+curl -i http://localhost:3002/
+docker compose logs --since=1m frontend
 ```
 
-## Expected
+## Expected Behavior
 
-The watch session should report that it is rebuilding `frontend`, then unexpectedly recreate `backend`.
+Touching `frontend/trigger.txt` should rebuild or recreate `frontend` only, while `backend` stays healthy and reachable through `http://localhost:3002/`.
 
-Typical log sequence:
+## Actual Behavior
+
+Watch output includes `backend` being recreated even though the change only targets `frontend`:
 
 ```text
 Rebuilding service(s) ["frontend"] after changes were detected...
-Image compose-watch-backend-recreate-repro-backend Building
-compose-watch-backend-recreate-repro-backend-1 Recreate
-compose-watch-backend-recreate-repro-backend-1 Recreated
-frontend-1 ... lookup backend on 127.0.0.11:53: no such host
+Container <project>-backend-1 Recreate
+Container <project>-backend-1 Recreated
+Container <project>-frontend-1 Recreate
+Container <project>-frontend-1 Recreated
 ```
 
-After the event:
+With `docker compose up --build --watch`, there is also:
 
-- `docker compose ps` no longer shows `backend`
-- `docker compose ps -a` shows `backend` stuck in `Created`
+```text
+backend-1 has been recreated
+backend-1 ... received interrupt, shutting down...
+backend-1 exited with code 2
+```
+
+After that, the stack is broken:
+
+- `docker compose ps` no longer lists `backend`
+- `docker compose ps -a` shows `backend` in `Created`
 - `curl http://localhost:3002/` returns `502`
-- `docker compose logs frontend` shows `lookup backend on 127.0.0.11:53: no such host`
+- `frontend` logs show `lookup backend on 127.0.0.11:53: no such host`
 
-## Minimal Config
+## Ablations
 
-The smallest config I found that still reproduces the bug is:
+The bug disappears if any of the following are changed:
 
-- `backend` is a built service, not a pure `image:` service
-- `frontend` depends on `backend`
-- `frontend` has a `develop.watch` rebuild rule for `frontend/trigger.txt`
-- `backend` has any `develop.watch` rule at all; in this repro it uses `action: restart` on `backend/Dockerfile`
+- remove `backend.develop.watch`
+- remove `frontend.depends_on`
+- remove `frontend.develop.watch`
+- change `backend` to a pure `image:` service
+
+The `backend` watch action does not need to be `rebuild`; `restart` is enough.
