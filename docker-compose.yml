@@ -1,6 +1,10 @@
 services:
   backend:
     build: ./backend
+    develop:
+      watch:
+        - action: restart
+          path: ./backend/Dockerfile
 
   frontend:
     depends_on:
@@ -11,8 +15,4 @@ services:
     develop:
       watch:
         - action: rebuild
-          path: ./frontend
-          include:
-            - trigger.txt
-            - Dockerfile
-            - Caddyfile
+          path: ./frontend/trigger.txt
