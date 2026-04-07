@@ -8,6 +8,7 @@ This is a minimal reproduction for a Docker Compose watch reconcile issue:
 - both `frontend` and `backend` have `develop.watch` config
 - touching `frontend/trigger.txt` is enough to trigger the issue
 - on Docker 29.3.1 / Compose v5.1.1, the original repo only reproduced reliably after adding a `backend.develop.watch` entry
+- the bug reproduces both with `docker compose watch frontend` and with `docker compose up --build --watch`
 
 ## Run
 
@@ -16,6 +17,14 @@ cd /Users/jack/Code/compose-watch-backend-recreate-repro
 docker compose down
 docker compose up -d --build
 docker compose watch --quiet frontend
+```
+
+Or, equivalently:
+
+```bash
+cd /Users/jack/Code/compose-watch-backend-recreate-repro
+docker compose down
+docker compose up --build --watch
 ```
 
 In another shell:
