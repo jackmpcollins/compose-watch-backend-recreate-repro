@@ -13,16 +13,16 @@ This is a minimal reproduction for a Docker Compose watch reconcile issue:
 ## Run
 
 ```bash
-cd /Users/jack/Code/compose-watch-backend-recreate-repro
+cd compose-watch-backend-recreate-repro
 docker compose down
 docker compose up -d --build
-docker compose watch --quiet frontend
+docker compose watch frontend
 ```
 
 Or, equivalently:
 
 ```bash
-cd /Users/jack/Code/compose-watch-backend-recreate-repro
+cd compose-watch-backend-recreate-repro
 docker compose down
 docker compose up --build --watch
 ```
@@ -30,7 +30,7 @@ docker compose up --build --watch
 In another shell:
 
 ```bash
-cd /Users/jack/Code/compose-watch-backend-recreate-repro
+cd compose-watch-backend-recreate-repro
 while true; do
   printf '%s ' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
   curl -s -o /dev/null -w 'status=%{http_code} total=%{time_total}\n' \
@@ -42,7 +42,7 @@ done
 Trigger the rebuild:
 
 ```bash
-cd /Users/jack/Code/compose-watch-backend-recreate-repro
+cd compose-watch-backend-recreate-repro
 touch frontend/trigger.txt
 ```
 
@@ -54,6 +54,7 @@ Typical log sequence:
 
 ```text
 Rebuilding service(s) ["frontend"] after changes were detected...
+Image compose-watch-backend-recreate-repro-backend Building
 compose-watch-backend-recreate-repro-backend-1 Recreate
 compose-watch-backend-recreate-repro-backend-1 Recreated
 frontend-1 ... lookup backend on 127.0.0.11:53: no such host
